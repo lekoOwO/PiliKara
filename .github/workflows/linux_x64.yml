@@ -61,13 +61,13 @@ jobs:
         run: flutter build linux --release -v --pub --dart-define-from-file=pili_release.json
 
       - name: Package .tar.gz
-        run: tar -zcvf PiliPlus_linux_${{ env.version }}_amd64.tar.gz -C build/linux/x64/release/bundle .
+        run: tar -zcvf PiliKara_linux_${{ env.version }}_amd64.tar.gz -C build/linux/x64/release/bundle .
 
       - name: Packege deb
         run: |
           printf "建立构建目录...\n"
-          mkdir "PiliPlus_linux_${{ env.version }}_amd64"
-          pushd "PiliPlus_linux_${{ env.version }}_amd64"
+          mkdir "PiliKara_linux_${{ env.version }}_amd64"
+          pushd "PiliKara_linux_${{ env.version }}_amd64"
           mkdir -p opt/PiliPlus
           mkdir -p usr/share/applications
           mkdir -p usr/share/icons/hicolor/512x512/apps
@@ -102,8 +102,8 @@ jobs:
 
           printf "打包 deb 文件...\n"
           popd
-          dpkg-deb --build --verbose --root-owner-group "PiliPlus_linux_${{ env.version }}_amd64"
-          printf "完成: PiliPlus_linux_%s_amd64.deb\n" "${{ env.version }}"
+          dpkg-deb --build --verbose --root-owner-group "PiliKara_linux_${{ env.version }}_amd64"
+          printf "完成: PiliKara_linux_%s_amd64.deb\n" "${{ env.version }}"
         shell: bash
 
       - name: Packege rpm
@@ -180,9 +180,9 @@ jobs:
           rpmbuild --define "_topdir $RPM_BUILD_ROOT" -bb "$RPM_BUILD_ROOT/SPECS/piliplus.spec"
 
           printf "移动生成的 RPM...\n"
-          find "$RPM_BUILD_ROOT/RPMS" -name "*.rpm" -exec mv {} "PiliPlus_linux_${{ env.version }}_amd64.rpm" \;
+          find "$RPM_BUILD_ROOT/RPMS" -name "*.rpm" -exec mv {} "PiliKara_linux_${{ env.version }}_amd64.rpm" \;
 
-          printf "完成: PiliPlus_linux_%s_amd64.rpm\n" "${{ env.version }}"
+          printf "完成: PiliKara_linux_%s_amd64.rpm\n" "${{ env.version }}"
         shell: bash
 
       - name: Package AppImage
@@ -223,9 +223,9 @@ jobs:
           sed -i 's|Icon=piliplus|Icon=piliplus|g' "$APPDIR/com.example.piliplus.desktop"
 
           printf "打包 AppImage...\n"
-          ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "PiliPlus_linux_${{ env.version }}_amd64.AppImage"
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage "$APPDIR" "PiliKara_linux_${{ env.version }}_amd64.AppImage"
 
-          printf "完成: PiliPlus_linux_%s_amd64.AppImage\n" "${{ env.version }}"
+          printf "完成: PiliKara_linux_%s_amd64.AppImage\n" "${{ env.version }}"
         shell: bash
 
       - name: Release
@@ -235,35 +235,35 @@ jobs:
           tag_name: ${{ github.event.inputs.tag }}
           name: ${{ github.event.inputs.tag }}
           files: |
-            PiliPlus_linux_*.tar.gz
-            PiliPlus_linux_*.deb
-            PiliPlus_linux_*.rpm
-            PiliPlus_linux_*.AppImage
+            PiliKara_linux_*.tar.gz
+            PiliKara_linux_*.deb
+            PiliKara_linux_*.rpm
+            PiliKara_linux_*.AppImage
 
       - name: Upload linux targz package
         uses: actions/upload-artifact@v7
         with:
           archive: false
           name: Linux_targz_amd64_packege
-          path: PiliPlus_linux_*.tar.gz
+          path: PiliKara_linux_*.tar.gz
 
       - name: Upload linux deb package
         uses: actions/upload-artifact@v7
         with:
           archive: false
           name: Linux_deb_amd64_package
-          path: PiliPlus_linux_*.deb
+          path: PiliKara_linux_*.deb
 
       - name: Upload linux rpm package
         uses: actions/upload-artifact@v7
         with:
           archive: false
           name: Linux_rpm_amd64_package
-          path: PiliPlus_linux_*.rpm
+          path: PiliKara_linux_*.rpm
 
       - name: Upload linux AppImage package
         uses: actions/upload-artifact@v7
         with:
           archive: false
           name: Linux_AppImage_amd64_package
-          path: PiliPlus_linux_*.AppImage
+          path: PiliKara_linux_*.AppImage
