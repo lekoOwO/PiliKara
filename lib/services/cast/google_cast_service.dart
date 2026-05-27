@@ -245,6 +245,20 @@ class GoogleCastService {
     }
   }
 
+  Future<bool> joinExistingSession({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final initialized = _initialized || await initialize();
+    if (!initialized) return false;
+
+    final session = await _waitForConnectedSessionWithAnyDevice(timeout);
+    if (session == null) return false;
+
+    _updateFromSession(session);
+    _registerMediaListeners();
+    return true;
+  }
+
   Future<GoogleCastSession?> _waitForConnectedSession(
     GoogleCastDevice device,
   ) async {
@@ -259,6 +273,20 @@ class GoogleCastService {
     return _isConnectedSession(session, device) ? session : null;
   }
 
+  Future<GoogleCastSession?> _waitForConnectedSessionWithAnyDevice(
+    Duration timeout,
+  ) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      final session = _session;
+      if (_isConnectedSessionWithAnyDevice(session)) return session;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+
+    final session = _session;
+    return _isConnectedSessionWithAnyDevice(session) ? session : null;
+  }
+
   bool _isConnectedSession(
     GoogleCastSession? session,
     GoogleCastDevice device,
@@ -268,6 +296,10 @@ class GoogleCastService {
     }
     final deviceID = session?.device?.deviceID;
     return deviceID == null || deviceID == device.deviceID;
+  }
+
+  bool _isConnectedSessionWithAnyDevice(GoogleCastSession? session) {
+    return session?.connectionState == GoogleCastConnectState.connected;
   }
 
   Future<bool> disconnect({bool stopCasting = true}) async {

@@ -15,6 +15,7 @@ import 'package:PiliPlus/pages/live/view.dart';
 import 'package:PiliPlus/pages/rank/view.dart';
 import 'package:PiliPlus/pages/subscription_detail/view.dart';
 import 'package:PiliPlus/pages/video/reply_reply/view.dart';
+import 'package:PiliPlus/services/cast/google_cast_service.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/request_utils.dart';
@@ -31,6 +32,7 @@ abstract final class PiliScheme {
   static StreamSubscription? listener;
   static final uriDigitRegExp = RegExp(r'/(\d+)');
   static final _prefixRegex = RegExp(r'^\S+://');
+  static bool _castJoinInProgress = false;
 
   static void init() {
     // Register our protocol only on Windows platform
@@ -39,6 +41,25 @@ abstract final class PiliScheme {
 
     listener?.cancel();
     listener = appLinks.uriLinkStream.listen(routePush);
+    unawaited(_routeInitialCastJoinLink());
+  }
+
+  static Future<void> _routeInitialCastJoinLink() async {
+    try {
+      final uri = await appLinks.getInitialLink();
+      if (uri == null || !isCastJoinUri(uri)) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(routePush(uri));
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('initial Cast join link failed: $e');
+    }
+  }
+
+  static bool isCastJoinUri(Uri uri) {
+    return uri.scheme == 'pilikara' &&
+        uri.host == 'cast' &&
+        uri.path == '/join';
   }
 
   static int? _videoProgress(Map<String, String> queryParameters) {
@@ -96,6 +117,14 @@ abstract final class PiliScheme {
     final String path = uri.path;
 
     switch (scheme) {
+      case 'pilikara':
+        if (isCastJoinUri(uri)) {
+          return _joinCastSession();
+        }
+        if (!selfHandle) {
+          SmartDialog.showToast('未知路径:$uri，请截图反馈给开发者');
+        }
+        return false;
       case 'bilibili':
         switch (host) {
           case 'root':
@@ -431,6 +460,33 @@ abstract final class PiliScheme {
           SmartDialog.showToast('未知路径:$uri，请截图反馈给开发者');
         }
         return false;
+    }
+  }
+
+  static Future<bool> _joinCastSession() async {
+    if (_castJoinInProgress) return true;
+    _castJoinInProgress = true;
+    try {
+      final googleCast = GoogleCastService.instance;
+      if (!googleCast.isSupported) {
+        SmartDialog.showToast('此平台不支持 Chromecast');
+        return true;
+      }
+
+      if (Get.currentRoute != '/dlna') {
+        Get.toNamed('/dlna');
+      }
+
+      final joined = await googleCast.joinExistingSession();
+      if (!joined) {
+        SmartDialog.showToast('未找到可加入的 Chromecast 投屏');
+      }
+      return true;
+    } catch (_) {
+      SmartDialog.showToast('加入 Chromecast 投屏失败');
+      return true;
+    } finally {
+      _castJoinInProgress = false;
     }
   }
 
