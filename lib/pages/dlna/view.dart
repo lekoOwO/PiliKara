@@ -4,6 +4,7 @@ import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/loading_widget.dart';
 import 'package:PiliPlus/common/widgets/view_sliver_safe_area.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/services/cast/cast_media_payload.dart';
 import 'package:PiliPlus/services/cast/cast_remote_state.dart';
 import 'package:PiliPlus/services/cast/google_cast_service.dart';
@@ -329,9 +330,14 @@ class _DLNAPageState extends State<DLNAPage> {
   }
 
   void _syncGoogleCastSelection(CastRemoteState state, {bool notify = true}) {
-    final nextDeviceId = state.connection == CastConnectionState.connected
-        ? state.deviceId
-        : null;
+    final String? nextDeviceId;
+    if (state.connection == CastConnectionState.connected) {
+      nextDeviceId = state.deviceId ?? _lastGoogleCastDeviceId;
+    } else if (state.connection == CastConnectionState.disconnected) {
+      nextDeviceId = null;
+    } else {
+      return;
+    }
     if (_lastGoogleCastDeviceId == nextDeviceId) return;
     _lastGoogleCastDeviceId = nextDeviceId;
     if (notify && mounted) setState(() {});
@@ -372,7 +378,7 @@ class _DLNAPageState extends State<DLNAPage> {
   }
 
   Future<void> _connectGoogleCast(GoogleCastDevice device) async {
-    final payload = _buildCastPayload();
+    final payload = await _buildPayloadForDevice();
     if (payload == null) return;
     final generation = ++_receiverSwitchGeneration;
 
@@ -409,6 +415,21 @@ class _DLNAPageState extends State<DLNAPage> {
         _lastGoogleCastDeviceId = null;
       });
     }
+  }
+
+  Future<CastMediaPayload?> _buildPayloadForDevice() async {
+    final heroTag = Get.parameters['heroTag'];
+    if (heroTag != null && heroTag.isNotEmpty) {
+      try {
+        final controller = Get.find<VideoDetailController>(tag: heroTag);
+        final payload = await controller.buildGoogleCastPayloadForDevice(
+          qn: int.tryParse(Get.parameters['quality'] ?? ''),
+          position: _parseDuration(Get.parameters['position']),
+        );
+        if (payload != null) return payload;
+      } catch (_) {}
+    }
+    return _buildCastPayload();
   }
 
   bool _isCurrentReceiverSwitch(int generation) {

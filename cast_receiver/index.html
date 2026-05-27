@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PiliKara Cast Receiver</title>
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #05070a;
+      color: #eef3f8;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    cast-media-player {
+      --theme-hue: 194;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <cast-media-player></cast-media-player>
+  <script>
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+
+    function numberOrUndefined(value) {
+      if (value === null || value === undefined || value === '') return undefined;
+      var n = Number(value);
+      return isFinite(n) ? n : undefined;
+    }
+
+    function parseFrameRate(value) {
+      if (value === null || value === undefined || value === '') return undefined;
+      if (typeof value === 'number') return isFinite(value) ? value : undefined;
+      var text = String(value);
+      if (text.indexOf('/') !== -1) {
+        var parts = text.split('/');
+        if (parts.length === 2) {
+          var num = Number(parts[0]);
+          var den = Number(parts[1]);
+          if (isFinite(num) && isFinite(den) && den !== 0) {
+            return num / den;
+          }
+        }
+        return undefined;
+      }
+      var n = Number(text);
+      return isFinite(n) ? n : undefined;
+    }
+
+    function canDisplayTrack(track, isVideo) {
+      if (typeof context.canDisplayType !== 'function') return true;
+      if (!track) return false;
+      var mimeType = track.mimeType || (isVideo ? 'video/mp4' : 'audio/mp4');
+      var codecs = track.codecs || undefined;
+      var width = isVideo ? numberOrUndefined(track.width) : undefined;
+      var height = isVideo ? numberOrUndefined(track.height) : undefined;
+      var frameRate = isVideo ? parseFrameRate(track.frameRate) : undefined;
+      try {
+        return context.canDisplayType(mimeType, codecs, width, height, frameRate);
+      } catch (e) {
+        var contentType = codecs ? mimeType + '; codecs="' + codecs + '"' : mimeType;
+        try {
+          return context.canDisplayType(contentType);
+        } catch (_) {
+          return false;
+        }
+      }
+    }
+
+    function canDisplayCandidate(candidate) {
+      return canDisplayTrack(candidate.video, true)
+        && canDisplayTrack(candidate.audio, false);
+    }
+
+    function applyCandidate(loadRequestData, candidate) {
+      loadRequestData.media.contentId = candidate.url;
+      loadRequestData.media.contentUrl = candidate.url;
+      loadRequestData.media.contentType = candidate.contentType;
+      return loadRequestData;
+    }
+
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD,
+      function (loadRequestData) {
+        try {
+          var media = loadRequestData.media;
+          if (!media) {
+            return loadRequestData;
+          }
+
+          var pilikara = (media.customData && media.customData.pilikara)
+            || (loadRequestData.customData && loadRequestData.customData.pilikara);
+
+          if (!pilikara || !pilikara.candidates || !pilikara.candidates.length) {
+            return loadRequestData;
+          }
+
+          var candidates = pilikara.candidates;
+          for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (canDisplayCandidate(c)) {
+              return applyCandidate(loadRequestData, c);
+            }
+          }
+
+          return applyCandidate(loadRequestData, candidates[0]);
+        } catch (e) {
+          return loadRequestData;
+        }
+      }
+    );
+
+    context.start();
+  </script>
+</body>
+</html>

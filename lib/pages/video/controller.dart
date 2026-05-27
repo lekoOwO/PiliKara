@@ -50,7 +50,11 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
+import 'package:PiliPlus/services/cast/cast_dash_manifest.dart';
+import 'package:PiliPlus/services/cast/cast_dash_policy.dart';
+import 'package:PiliPlus/services/cast/cast_local_proxy.dart';
 import 'package:PiliPlus/services/cast/cast_media_payload.dart';
+import 'package:PiliPlus/services/cast/cast_receiver_app.dart';
 import 'package:PiliPlus/services/cast/google_cast_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -923,7 +927,11 @@ class VideoDetailController extends GetxController
         _setVideoHeight();
         currentDecodeFormats = VideoDecodeFormatType.fromString('avc1');
         currentVideoQa.value = videoQuality;
-        await _initPlayerIfNeeded(autoFullScreenFlag);
+        if (plPlayerController.isCasting) {
+          _loadNewVideoToCast();
+        } else {
+          await _initPlayerIfNeeded(autoFullScreenFlag);
+        }
         isQuerying = false;
         return;
       }
@@ -1022,7 +1030,11 @@ class VideoDetailController extends GetxController
       } else {
         audioUrl = '';
       }
-      await _initPlayerIfNeeded(autoFullScreenFlag);
+      if (plPlayerController.isCasting) {
+        _loadNewVideoToCast();
+      } else {
+        await _initPlayerIfNeeded(autoFullScreenFlag);
+      }
     } else {
       _autoPlay.value = false;
       videoState.value = false;
@@ -1662,6 +1674,228 @@ class VideoDetailController extends GetxController
     );
   }
 
+  Future<CastMediaPayload?> buildGoogleCastPayloadForDevice({
+    int? qn,
+    Duration? position,
+  }) async {
+    final res = await VideoHttp.tvPlayUrl(
+      cid: cid.value,
+      objectId: epId ?? aid,
+      playurlType: epId != null ? 2 : 1,
+      qn: qn,
+    );
+    if (res case Success(:final response)) {
+      final dash = response.dash ?? data.dash;
+      if (dash != null) {
+        await CastLocalProxyServer.instance.ensureStarted();
+        final qnTarget =
+            qn ?? currentVideoQa.value?.code ?? response.quality ?? 80;
+        final payload = _buildDashCandidatePayload(
+          dash,
+          targetQn: qnTarget,
+          position: position,
+        );
+        if (payload != null) return payload;
+      }
+      final first = response.durl?.firstOrNull;
+      if (first == null || first.playUrls.isEmpty) {
+        SmartDialog.showToast('不支持投屏');
+        return null;
+      }
+      final url = VideoUtils.getCdnUrl(first.playUrls);
+      return _buildGoogleCastPayload(url, position: position);
+    }
+    res.toast();
+    return null;
+  }
+
+  CastMediaPayload? _buildDashCandidatePayload(
+    Dash dash, {
+    required int targetQn,
+    Duration? position,
+  }) {
+    final videos = dash.video;
+    final audios = dash.audio;
+    if (videos == null || audios == null) return null;
+
+    final audio = CastDashTrackSelector.selectAacAudio(audios);
+    if (audio == null) return null;
+
+    final ordered = CastDashTrackSelector.playableVideos(
+      videos,
+      targetQn: targetQn,
+    );
+    if (ordered.isEmpty) return null;
+
+    final proxy = CastLocalProxyServer.instance;
+    if (!proxy.isRunning) return null;
+
+    final candidates = <Map<String, dynamic>>[];
+    final duration = _castDuration();
+
+    for (final video in ordered) {
+      final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
+      final audioUrl = VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
+      final proxiedVideoUrl = proxy.buildProxyUri(videoUrl).toString();
+      final proxiedAudioUrl = proxy.buildProxyUri(audioUrl).toString();
+
+      final manifestVideo = VideoItem(
+        id: video.id,
+        baseUrl: proxiedVideoUrl,
+        bandWidth: video.bandWidth,
+        mimeType: video.mimeType,
+        codecs: video.codecs,
+        width: video.width,
+        height: video.height,
+        frameRate: video.frameRate,
+        sar: video.sar,
+        startWithSap: video.startWithSap,
+        segmentBase: video.segmentBase,
+        codecid: video.codecid,
+        quality: video.quality,
+      );
+
+      final manifestAudio = AudioItem()
+        ..id = audio.id
+        ..baseUrl = proxiedAudioUrl
+        ..bandWidth = audio.bandWidth
+        ..mimeType = audio.mimeType
+        ..codecs = audio.codecs
+        ..segmentBase = audio.segmentBase
+        ..sar = audio.sar
+        ..startWithSap = audio.startWithSap
+        ..codecid = audio.codecid
+        ..quality = audio.quality;
+
+      final manifest = CastDashManifest.build(
+        video: manifestVideo,
+        audio: manifestAudio,
+        baseUrl: '',
+        duration: duration,
+        minBufferTime: dash.minBufferTime == null
+            ? null
+            : Duration(
+                milliseconds: (dash.minBufferTime! * 1000).round(),
+              ),
+      );
+
+      final manifestUrl = proxy.registerManifest(manifest);
+
+      candidates.add({
+        'url': manifestUrl.toString(),
+        'contentType': castDashContentType,
+        'qualityCode': video.id,
+        'video': {
+          'mimeType': video.mimeType ?? 'video/mp4',
+          'codecs': video.codecs ?? '',
+          'width': video.width,
+          'height': video.height,
+          'frameRate': video.frameRate,
+          'bandwidth': video.bandWidth,
+        },
+        'audio': {
+          'mimeType': audio.mimeType ?? 'audio/mp4',
+          'codecs': audio.codecs ?? '',
+          'bandwidth': audio.bandWidth,
+        },
+      });
+    }
+
+    if (candidates.isEmpty) return null;
+
+    final first = candidates.first;
+    final uri = Uri.tryParse(first['url'] as String);
+    if (uri == null) return null;
+
+    return CastMediaPayload(
+      url: uri,
+      title: _castTitle(),
+      cover: _castCoverUri(),
+      position: position ?? plPlayerController.position,
+      duration: _castDuration(),
+      qualityCode: currentVideoQa.value?.code,
+      contentTypeOverride: castDashContentType,
+      receiverData: {
+        CastReceiverApp.customDataKey: {
+          'candidates': candidates,
+        },
+      },
+    );
+  }
+
+  Future<void> _reloadGoogleCast({
+    int? qn,
+    Duration? position,
+    required int generation,
+  }) async {
+    final payload = await buildGoogleCastPayloadForDevice(
+      qn: qn,
+      position: position,
+    );
+    if (payload == null) return;
+    if (isClosed ||
+        !plPlayerController.isCasting ||
+        generation != _castReloadGeneration ||
+        currentVideoQa.value?.code != qn) {
+      return;
+    }
+    try {
+      await GoogleCastService.instance.load(payload);
+    } catch (_) {
+      SmartDialog.showToast('投屏失败');
+    }
+  }
+
+  void _loadNewVideoToCast() {
+    final generation = ++_castReloadGeneration;
+    final position = defaultST != null && defaultST != Duration.zero
+        ? defaultST
+        : (getFirstSegment() ?? Duration.zero);
+    unawaited(
+      _reloadGoogleCast(
+        qn: currentVideoQa.value?.code,
+        position: position,
+        generation: generation,
+      ),
+    );
+  }
+
+  @pragma('vm:notify-debugger-on-exception')
+  Future<void> onCast() async {
+    SmartDialog.showLoading();
+    final String? url;
+    try {
+      url = await _queryUrlForDlnaFallback();
+    } finally {
+      SmartDialog.dismiss();
+    }
+    if (url == null) return;
+
+    final title = _castTitle();
+    if (kDebugMode) {
+      debugPrint(title);
+    }
+    final position = plPlayerController.position.inMilliseconds.toString();
+    final duration = data.timeLength?.toString();
+    final quality = currentVideoQa.value?.code.toString();
+    Get.toNamed(
+      '/dlna',
+      parameters: {
+        'heroTag': heroTag,
+        'url': url,
+        'title': title,
+        'position': position,
+        'duration': ?duration,
+        'quality': ?quality,
+        'cover': ?_castCover(),
+      },
+    );
+  }
+
+  Future<String?> _queryUrlForDlnaFallback() {
+    return _queryGoogleCastUrl(qn: currentVideoQa.value?.code);
+  }
+
   Future<String?> _queryGoogleCastUrl({int? qn}) async {
     final res = await VideoHttp.tvPlayUrl(
       cid: cid.value,
@@ -1679,64 +1913,5 @@ class VideoDetailController extends GetxController
     }
     res.toast();
     return null;
-  }
-
-  Future<void> _reloadGoogleCast({
-    int? qn,
-    Duration? position,
-    required int generation,
-  }) async {
-    final url = await _queryGoogleCastUrl(qn: qn);
-    if (url == null) return;
-    if (isClosed ||
-        !plPlayerController.isCasting ||
-        generation != _castReloadGeneration ||
-        currentVideoQa.value?.code != qn) {
-      return;
-    }
-    final payload = _buildGoogleCastPayload(url, position: position);
-    if (payload == null) return;
-    if (isClosed ||
-        !plPlayerController.isCasting ||
-        generation != _castReloadGeneration ||
-        currentVideoQa.value?.code != qn) {
-      return;
-    }
-    try {
-      await GoogleCastService.instance.load(payload);
-    } catch (_) {
-      SmartDialog.showToast('投屏失败');
-    }
-  }
-
-  @pragma('vm:notify-debugger-on-exception')
-  Future<void> onCast() async {
-    SmartDialog.showLoading();
-    final String? url;
-    try {
-      url = await _queryGoogleCastUrl(qn: currentVideoQa.value?.code);
-    } finally {
-      SmartDialog.dismiss();
-    }
-    if (url == null) return;
-
-    final title = _castTitle();
-    if (kDebugMode) {
-      debugPrint(title);
-    }
-    final position = plPlayerController.position.inMilliseconds.toString();
-    final duration = data.timeLength?.toString();
-    final quality = currentVideoQa.value?.code.toString();
-    Get.toNamed(
-      '/dlna',
-      parameters: {
-        'url': url,
-        'title': title,
-        'position': position,
-        'duration': ?duration,
-        'quality': ?quality,
-        'cover': ?_castCover(),
-      },
-    );
   }
 }

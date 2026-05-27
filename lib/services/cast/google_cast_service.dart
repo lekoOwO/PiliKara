@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:PiliPlus/services/cast/cast_media_payload.dart';
+import 'package:PiliPlus/services/cast/cast_receiver_app.dart';
 import 'package:PiliPlus/services/cast/cast_remote_state.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
@@ -10,7 +11,7 @@ class GoogleCastService {
   static final GoogleCastService instance = GoogleCastService._();
   GoogleCastService._();
 
-  static const _connectionTimeout = Duration(seconds: 10);
+  static const _connectionTimeout = Duration(seconds: 25);
 
   final _stateController = StreamController<CastRemoteState>.broadcast();
 
@@ -57,14 +58,14 @@ class GoogleCastService {
       if (Platform.isAndroid) {
         await GoogleCastContext.instance.setSharedInstanceWithOptions(
           GoogleCastOptionsAndroid(
-            appId: GoogleCastDiscoveryCriteria.kDefaultApplicationId,
+            appId: CastReceiverApp.applicationId,
           ),
         );
       } else {
         await GoogleCastContext.instance.setSharedInstanceWithOptions(
           IOSGoogleCastOptions(
             GoogleCastDiscoveryCriteriaInitialize.initWithApplicationID(
-              GoogleCastDiscoveryCriteria.kDefaultApplicationId,
+              CastReceiverApp.applicationId,
             ),
           ),
         );
@@ -196,16 +197,34 @@ class GoogleCastService {
   Future<bool> connect(GoogleCastDevice device) async {
     if (!_canUseCast) return false;
     try {
-      _emit(_state.copyWith(connection: CastConnectionState.connecting));
+      _emit(
+        _state.copyWith(
+          connection: CastConnectionState.connecting,
+          deviceId: device.deviceID,
+          deviceName: device.friendlyName,
+        ),
+      );
       final started = await GoogleCastSessionManager.instance
           .startSessionWithDevice(device);
       if (!started) {
-        _emit(_state.copyWith(connection: CastConnectionState.disconnected));
+        _emit(
+          _state.copyWith(
+            connection: CastConnectionState.disconnected,
+            clearDeviceId: true,
+            clearDeviceName: true,
+          ),
+        );
         return false;
       }
       final session = await _waitForConnectedSession(device);
       if (session == null) {
-        _emit(_state.copyWith(connection: CastConnectionState.disconnected));
+        _emit(
+          _state.copyWith(
+            connection: CastConnectionState.disconnected,
+            clearDeviceId: true,
+            clearDeviceName: true,
+          ),
+        );
         return false;
       }
       _updateFromSession(session);
@@ -215,7 +234,13 @@ class GoogleCastService {
       if (kDebugMode) {
         debugPrint('GoogleCastService: connect failed: $e');
       }
-      _emit(_state.copyWith(connection: CastConnectionState.disconnected));
+      _emit(
+        _state.copyWith(
+          connection: CastConnectionState.disconnected,
+          clearDeviceId: true,
+          clearDeviceName: true,
+        ),
+      );
       return false;
     }
   }
@@ -306,6 +331,7 @@ class GoogleCastService {
         mediaInfo,
         autoPlay: autoPlay,
         playPosition: payload.position,
+        customData: payload.customData,
       );
     } catch (e) {
       if (kDebugMode) {

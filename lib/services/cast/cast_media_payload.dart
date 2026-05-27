@@ -5,6 +5,8 @@ class CastMediaPayload {
   final Duration position;
   final Duration? duration;
   final int? qualityCode;
+  final String? contentTypeOverride;
+  final Map<String, dynamic>? receiverData;
 
   CastMediaPayload({
     required this.url,
@@ -13,11 +15,14 @@ class CastMediaPayload {
     this.position = Duration.zero,
     this.duration,
     this.qualityCode,
+    this.contentTypeOverride,
+    this.receiverData,
   });
 
   String get contentId => url.toString();
 
   String get contentType {
+    if (contentTypeOverride != null) return contentTypeOverride!;
     final path = url.path.toLowerCase();
     if (path.endsWith('.m3u8')) return 'application/x-mpegURL';
     if (path.endsWith('.mp4')) return 'video/mp4';
@@ -27,7 +32,11 @@ class CastMediaPayload {
   }
 
   Map<String, dynamic> get customData {
-    final data = <String, dynamic>{'title': title};
+    final data = <String, dynamic>{};
+    if (receiverData != null) {
+      data.addAll(receiverData!);
+    }
+    data['title'] = title;
     if (qualityCode != null) {
       data['qualityCode'] = qualityCode;
     }
@@ -41,9 +50,13 @@ class CastMediaPayload {
     Duration? position,
     Duration? duration,
     int? qualityCode,
+    String? contentTypeOverride,
+    Map<String, dynamic>? receiverData,
     bool clearCover = false,
     bool clearDuration = false,
     bool clearQualityCode = false,
+    bool clearContentTypeOverride = false,
+    bool clearReceiverData = false,
   }) {
     return CastMediaPayload(
       url: url ?? this.url,
@@ -52,6 +65,11 @@ class CastMediaPayload {
       position: position ?? this.position,
       duration: clearDuration ? null : (duration ?? this.duration),
       qualityCode: clearQualityCode ? null : (qualityCode ?? this.qualityCode),
+      contentTypeOverride: clearContentTypeOverride
+          ? null
+          : (contentTypeOverride ?? this.contentTypeOverride),
+      receiverData:
+          clearReceiverData ? null : (receiverData ?? this.receiverData),
     );
   }
 }

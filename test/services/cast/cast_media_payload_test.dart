@@ -69,6 +69,57 @@ void main() {
       expect(reloaded.contentId, 'https://example.com/video-1080.mp4');
     });
 
+    test('uses contentTypeOverride over inferred content type', () {
+      final payload = CastMediaPayload(
+        url: Uri.parse('https://example.com/video.mp4'),
+        title: 'DASH',
+        contentTypeOverride: 'application/dash+xml',
+      );
+
+      expect(payload.contentType, 'application/dash+xml');
+    });
+
+    test('merges receiverData into customData', () {
+      final payload = CastMediaPayload(
+        url: Uri.parse('https://example.com/video.mp4'),
+        title: 'Test',
+        receiverData: {'key': 'value', 'other': 42},
+      );
+
+      expect(payload.customData, containsPair('key', 'value'));
+      expect(payload.customData, containsPair('other', 42));
+      expect(payload.customData, containsPair('title', 'Test'));
+    });
+
+    test('receiverData does not override title in customData', () {
+      final payload = CastMediaPayload(
+        url: Uri.parse('https://example.com/video.mp4'),
+        title: 'Original',
+        receiverData: {'title': 'Overridden'},
+      );
+
+      expect(payload.customData['title'], 'Original');
+    });
+
+    test('clears contentTypeOverride and receiverData via copyWith', () {
+      final current = CastMediaPayload(
+        url: Uri.parse('https://example.com/video.mp4'),
+        title: 'Test',
+        contentTypeOverride: 'application/dash+xml',
+        receiverData: {'key': 'value'},
+      );
+
+      final cleared = current.copyWith(
+        clearContentTypeOverride: true,
+        clearReceiverData: true,
+      );
+
+      expect(cleared.contentTypeOverride, isNull);
+      expect(cleared.receiverData, isNull);
+      expect(cleared.contentType, 'video/mp4');
+      expect(cleared.customData, isNot(contains('key')));
+    });
+
     test('can clear nullable metadata when media metadata changes', () {
       final current = CastMediaPayload(
         url: Uri.parse('https://example.com/video.mp4'),
