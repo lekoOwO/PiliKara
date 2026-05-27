@@ -83,6 +83,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data
+                    android:host="cast"
+                    android:path="/join"
+                    android:scheme="pilikara" />
+            </intent-filter>
+            <intent-filter android:label="PiliKara">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
                 <data android:scheme="http" />
                 <data android:scheme="https" />
                 <data android:host="*.bilibili.com" />
