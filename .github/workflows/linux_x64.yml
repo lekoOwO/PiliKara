@@ -68,12 +68,12 @@ jobs:
           printf "建立构建目录...\n"
           mkdir "PiliKara_linux_${{ env.version }}_amd64"
           pushd "PiliKara_linux_${{ env.version }}_amd64"
-          mkdir -p opt/PiliPlus
+          mkdir -p opt/PiliKara
           mkdir -p usr/share/applications
           mkdir -p usr/share/icons/hicolor/512x512/apps
 
           printf "复制文件...\n"
-          cp -r ../build/linux/x64/release/bundle/* opt/PiliPlus
+          cp -r ../build/linux/x64/release/bundle/* opt/PiliKara
           cp -r ../assets/linux/DEBIAN .
           cp ../assets/linux/com.example.piliplus.desktop usr/share/applications
           cp ../assets/images/logo/logo.png usr/share/icons/hicolor/512x512/apps/piliplus.png
@@ -89,9 +89,9 @@ jobs:
           sed -i "9s/size_need_change/${SIZE_KB}/g" DEBIAN/control
 
           printf "生成并写入 md5sums ...\n"
-          md5sum opt/PiliPlus/piliplus >> DEBIAN/md5sums
-          md5sum opt/PiliPlus/lib/* >> DEBIAN/md5sums
-          md5sum opt/PiliPlus/data/icudtl.dat >> DEBIAN/md5sums
+          md5sum opt/PiliKara/piliplus >> DEBIAN/md5sums
+          md5sum opt/PiliKara/lib/* >> DEBIAN/md5sums
+          md5sum opt/PiliKara/data/icudtl.dat >> DEBIAN/md5sums
 
           printf "设置权限...\n"
           chmod 0644 DEBIAN/control
@@ -126,7 +126,7 @@ jobs:
           Name:           piliplus
           Version:        ${{ env.version }}
           Release:        1%{?dist}
-          Summary:        PiliPlus Linux Version
+          Summary:        PiliKara Linux Version
           License:        GPL-3.0
           Source0:        piliplus-${{ env.version }}.tar.gz
           Requires:       desktop-file-utils, hicolor-icon-theme
@@ -140,13 +140,13 @@ jobs:
           %build
 
           %install
-          mkdir -p %{buildroot}/opt/PiliPlus
-          cp -r bundle/* %{buildroot}/opt/PiliPlus/
+          mkdir -p %{buildroot}/opt/PiliKara
+          cp -r bundle/* %{buildroot}/opt/PiliKara/
 
           # 二进制权限与命令行入口
-          chmod 755 %{buildroot}/opt/PiliPlus/piliplus
+          chmod 755 %{buildroot}/opt/PiliKara/piliplus
           mkdir -p %{buildroot}/usr/bin
-          ln -sf /opt/PiliPlus/piliplus %{buildroot}/usr/bin/piliplus
+          ln -sf /opt/PiliKara/piliplus %{buildroot}/usr/bin/piliplus
 
           # 桌面集成
           mkdir -p %{buildroot}/usr/share/applications
@@ -164,7 +164,7 @@ jobs:
           gtk-update-icon-cache -q -t -f %{_datadir}/icons/hicolor || true
 
           %files
-          /opt/PiliPlus
+          /opt/PiliKara
           /usr/bin/piliplus
           /usr/share/applications/com.example.piliplus.desktop
           /usr/share/icons/hicolor/512x512/apps/piliplus.png
@@ -192,7 +192,7 @@ jobs:
           chmod +x appimagetool-x86_64.AppImage
 
           printf "建立 AppDir 目录结构...\n"
-          APPDIR="PiliPlus.AppDir"
+          APPDIR="PiliKara.AppDir"
           mkdir -p "$APPDIR/usr/bin"
           mkdir -p "$APPDIR/usr/lib"
           mkdir -p "$APPDIR/usr/share/applications"

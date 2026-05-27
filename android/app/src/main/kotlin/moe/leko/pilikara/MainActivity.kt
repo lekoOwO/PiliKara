@@ -1,4 +1,4 @@
-package com.example.piliplus
+package moe.leko.pilikara
 
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
